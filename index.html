@@ -74,17 +74,21 @@ function getLineColor(line){
     return '#1976d2';
 }
 
-function createCard(train, initialY){
+function createCard(train, startY, endY){
     const card = document.createElement('div');
     card.className = 'card';
     card.style.backgroundColor = getLineColor(train.line);
-    card.style.transform = `translateY(${initialY}px)`;
+    card.style.transform = `translateY(${startY}px)`;
     card.style.opacity = '0';
     card.innerHTML = `<div>${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
     container.appendChild(card);
-    // Animate into place
+
+    // Force browser to register initial position
+    card.offsetHeight;
+
+    // Animate to end position
     requestAnimationFrame(()=>{
-        card.style.transform = `translateY(${initialY}px)`;
+        card.style.transform = `translateY(${endY}px)`;
         card.style.opacity = '1';
     });
     return card;
@@ -95,13 +99,7 @@ let cardElements = [];
 function renderInitial(){
     trains = Array.from({length:5}, randomTrain);
     trains.forEach((t,i)=>{
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.style.backgroundColor = getLineColor(t.line);
-        card.style.transform = `translateY(${i*cardHeight}px)`;
-        card.style.opacity = '1';
-        card.innerHTML = `<div>${t.line} Line - ${t.direction}bound | ETA: ${t.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
-        container.appendChild(card);
+        const card = createCard(t, i*cardHeight, i*cardHeight);
         cardElements.push(card);
     });
 }
@@ -123,29 +121,19 @@ function arriveTrain(){
     firstCard.style.transform = `translateY(-120%)`;
     trains.shift();
 
-    // Move remaining cards up
+    // Move existing cards up
     cardElements.forEach((card,i)=>{
         card.style.transform = `translateY(${i*cardHeight}px)`;
     });
 
-    // Add new card off-screen below and animate it
+    // Add new card after transition
     setTimeout(()=>{
         container.removeChild(firstCard);
         const newTrain = randomTrain();
         trains.push(newTrain);
-        const newCard = document.createElement('div');
-        newCard.className = 'card';
-        newCard.style.backgroundColor = getLineColor(newTrain.line);
-        newCard.style.transform = `translateY(${cardElements.length*cardHeight + cardHeight}px)`; // start below last
-        newCard.style.opacity = '1';
-        newCard.innerHTML = `<div>${newTrain.line} Line - ${newTrain.direction}bound | ETA: ${newTrain.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
-        container.appendChild(newCard);
+        const newCard = createCard(newTrain, cardElements.length*cardHeight + cardHeight, cardElements.length*cardHeight);
         cardElements.push(newCard);
-        // Animate to proper position
-        requestAnimationFrame(()=>{
-            newCard.style.transform = `translateY(${cardElements.length*cardHeight - cardHeight}px)`;
-        });
-    }, 1000); // wait for other cards to move up
+    }, 1000); // match transition duration
 }
 
 renderInitial();
