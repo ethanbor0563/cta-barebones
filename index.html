@@ -22,11 +22,12 @@
         position: relative;
         height: 400px;
         overflow: hidden;
+        padding-right: 10px; /* fix right cut-off */
     }
     .card {
         position: absolute;
         left: 0;
-        width: 100%;
+        width: calc(100% - 10px); /* fix right cut-off */
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -81,10 +82,7 @@ function createCard(train, index){
     card.style.transform = `translateY(${index*cardHeight}px)`;
     card.innerHTML = `<div>${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
     container.appendChild(card);
-    // Trigger entrance
-    requestAnimationFrame(()=>{
-        card.style.opacity='1';
-    });
+    requestAnimationFrame(()=>{ card.style.opacity='1'; });
     return card;
 }
 
@@ -109,23 +107,25 @@ function updateCountdowns(){
 }
 
 function arriveTrain(){
-    // Remove first card
     const firstCard = cardElements.shift();
     firstCard.style.opacity='0';
     firstCard.style.transform = `translateY(-120%)`;
-    setTimeout(()=>container.removeChild(firstCard),1000);
+
     trains.shift();
 
-    // Move remaining cards up
+    // Move existing cards up
     cardElements.forEach((card,i)=>{
         card.style.transform = `translateY(${i*cardHeight}px)`;
     });
 
-    // Add new card at bottom
-    const newTrain = randomTrain();
-    trains.push(newTrain);
-    const newCard = createCard(newTrain, cardElements.length);
-    cardElements.push(newCard);
+    // Add new card after transition
+    setTimeout(()=>{
+        container.removeChild(firstCard);
+        const newTrain = randomTrain();
+        trains.push(newTrain);
+        const newCard = createCard(newTrain, cardElements.length);
+        cardElements.push(newCard);
+    }, 1000); // match transition duration
 }
 
 renderInitial();
