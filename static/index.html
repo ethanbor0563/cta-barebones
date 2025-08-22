@@ -28,11 +28,11 @@ function fetchTrains(){
     .then(data=>{
         const newTrains = data.map(t=>({ ...t, eta: new Date(t.eta_iso) }));
 
-        // Slide off cards no longer in API
+        // Remove cards that no longer exist in API
         cardElements = cardElements.filter((card,i)=>{
             const exists = newTrains.find(t=>t.train_id===trains[i]?.train_id);
             if(!exists){
-                card.style.transform=`translateY(-${cardHeight*1.5}px)`;
+                card.style.transform=`translateY(-120%)`;
                 card.style.opacity='0';
                 setTimeout(()=>container.removeChild(card),1000);
             }
@@ -50,25 +50,15 @@ function renderNewCards(){
             const card = document.createElement('div');
             card.className='card';
             card.style.backgroundColor=routeColors[t.route]||'#1976d2';
-            card.style.transform=`translateY(${i*cardHeight + cardHeight}px)`; // start below last
+            card.style.transform=`translateY(${i*cardHeight + cardHeight}px)`;
             card.style.opacity='0';
-            card.innerHTML=`<div class='card-section'>${t.route} Line - ${t.dest}</div>
-                            <div class='card-section'>
-                                <div class='countdown'></div>
-                                <div class='eta'>${t.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-                            </div>`;
+            card.innerHTML=`<div class='card-section'>${t.route} Line - ${t.dest}</div><div class='card-section'><div class='countdown'></div><div class='eta'>${t.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div></div>`;
             container.appendChild(card);
             cardElements[i]=card;
 
-            // Animate into position
             requestAnimationFrame(()=>{
                 card.style.transform=`translateY(${i*cardHeight}px)`;
                 card.style.opacity='1';
-            });
-        } else {
-            // Slide existing cards to new position
-            requestAnimationFrame(()=>{
-                cardElements[i].style.transform=`translateY(${i*cardHeight}px)`;
             });
         }
     });
