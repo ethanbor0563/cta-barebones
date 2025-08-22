@@ -26,10 +26,9 @@
             gap: 1rem;
             overflow: hidden;
             position: relative;
-            height: 400px; /* fixed height for smooth animation */
+            height: 400px;
         }
         .card {
-            background: white;
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             padding: 1rem;
@@ -42,6 +41,7 @@
             transform: translateY(100%);
             opacity: 0;
             transition: transform 0.6s ease, opacity 0.6s ease;
+            color: white;
         }
         .card.enter {
             transform: translateY(0);
@@ -57,7 +57,10 @@
         .countdown {
             font-weight: bold;
             font-size: 1.2rem;
-            color: #1976d2;
+            padding: 0.3rem 0.6rem;
+            border-radius: 10px;
+            min-width: 60px;
+            text-align: center;
         }
     </style>
 </head>
@@ -73,11 +76,13 @@
         const directions = ["North", "South"];
         const lines = ["Red", "Purple"];
         const etaMinutes = Math.floor(Math.random() * 20) + 1;
+        const etaSeconds = Math.floor(Math.random() * 60);
         const now = new Date();
-        const eta = new Date(now.getTime() + etaMinutes * 60000);
+        const eta = new Date(now.getTime() + etaMinutes * 60000 + etaSeconds * 1000);
+        const line = lines[Math.floor(Math.random() * lines.length)];
         return {
             direction: directions[Math.floor(Math.random() * directions.length)],
-            line: lines[Math.floor(Math.random() * lines.length)],
+            line: line,
             eta: eta
         };
     }
@@ -85,12 +90,19 @@
     const container = document.getElementById("train-list");
     let trains = Array.from({length: 5}, randomTrain);
 
+    function getLineColor(line) {
+        if (line === 'Red') return '#d32f2f';
+        if (line === 'Purple') return '#6a1b9a';
+        return '#1976d2';
+    }
+
     function renderTrains() {
         container.innerHTML = "";
         trains.forEach((train, index) => {
             const card = document.createElement("div");
             card.className = "card";
             card.style.top = `${index * 80}px`;
+            card.style.backgroundColor = getLineColor(train.line);
             card.innerHTML = `<div class=\"train-info\">${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div><div class=\"countdown\"></div>`;
             container.appendChild(card);
             requestAnimationFrame(() => card.classList.add('enter'));
@@ -101,8 +113,10 @@
         const now = new Date();
         document.querySelectorAll('.card').forEach((card, i) => {
             const eta = trains[i].eta;
-            const diff = Math.max(0, Math.floor((eta - now) / 60000));
-            card.querySelector('.countdown').innerText = diff + ' min';
+            let diff = Math.max(0, Math.floor((eta - now) / 1000)); // seconds
+            const minutes = Math.floor(diff / 60);
+            const seconds = diff % 60;
+            card.querySelector('.countdown').innerText = `${minutes}m ${seconds}s`;
         });
     }
 
@@ -116,16 +130,12 @@
             trains.shift();
             trains.push(randomTrain());
             renderTrains();
-        }, 600); // match transition duration
+        }, 600);
     }
 
-    // Initial render
     renderTrains();
     updateCountdowns();
-
-    // Update countdowns every second
     setInterval(updateCountdowns, 1000);
-    // Simulate train arrival every 30 seconds
     setInterval(arriveTrain, 30000);
 </script>
 ```
