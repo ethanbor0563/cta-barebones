@@ -17,17 +17,16 @@
         font-size: 1.5rem;
     }
     .container {
-        max-width: 640px; /* wider cards */
+        max-width: 800px;
         margin: 2rem auto;
         position: relative;
         height: 400px;
         overflow: hidden;
-        padding: 0 10px;
     }
     .card {
         position: absolute;
         left: 0;
-        width: 100%; /* take full container width */
+        width: 90%;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -80,12 +79,13 @@ function createCard(train, initialY){
     card.className = 'card';
     card.style.backgroundColor = getLineColor(train.line);
     card.style.transform = `translateY(${initialY}px)`;
+    card.style.opacity = '0';
     card.innerHTML = `<div>${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
     container.appendChild(card);
-    // Animate from below
+    // Animate into place
     requestAnimationFrame(()=>{
         card.style.transform = `translateY(${initialY}px)`;
-        card.style.opacity='1';
+        card.style.opacity = '1';
     });
     return card;
 }
@@ -95,7 +95,14 @@ let cardElements = [];
 function renderInitial(){
     trains = Array.from({length:5}, randomTrain);
     trains.forEach((t,i)=>{
-        cardElements.push(createCard(t,i*cardHeight));
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.backgroundColor = getLineColor(t.line);
+        card.style.transform = `translateY(${i*cardHeight}px)`;
+        card.style.opacity = '1';
+        card.innerHTML = `<div>${t.line} Line - ${t.direction}bound | ETA: ${t.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
+        container.appendChild(card);
+        cardElements.push(card);
     });
 }
 
@@ -116,23 +123,29 @@ function arriveTrain(){
     firstCard.style.transform = `translateY(-120%)`;
     trains.shift();
 
-    // Move existing cards up smoothly
+    // Move remaining cards up
     cardElements.forEach((card,i)=>{
         card.style.transform = `translateY(${i*cardHeight}px)`;
     });
 
-    // Add new card after existing cards have moved up
+    // Add new card off-screen below and animate it
     setTimeout(()=>{
         container.removeChild(firstCard);
         const newTrain = randomTrain();
         trains.push(newTrain);
-        const newCard = createCard(newTrain, cardElements.length*cardHeight + cardHeight); // start below last card
-        // Animate it to correct position
-        requestAnimationFrame(()=>{
-            newCard.style.transform = `translateY(${cardElements.length*cardHeight}px)`;
-        });
+        const newCard = document.createElement('div');
+        newCard.className = 'card';
+        newCard.style.backgroundColor = getLineColor(newTrain.line);
+        newCard.style.transform = `translateY(${cardElements.length*cardHeight + cardHeight}px)`; // start below last
+        newCard.style.opacity = '1';
+        newCard.innerHTML = `<div>${newTrain.line} Line - ${newTrain.direction}bound | ETA: ${newTrain.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
+        container.appendChild(newCard);
         cardElements.push(newCard);
-    }, 1000); // match transition duration
+        // Animate to proper position
+        requestAnimationFrame(()=>{
+            newCard.style.transform = `translateY(${cardElements.length*cardHeight - cardHeight}px)`;
+        });
+    }, 1000); // wait for other cards to move up
 }
 
 renderInitial();
