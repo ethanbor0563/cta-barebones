@@ -1,145 +1,199 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Upcoming Trains</title>
+<meta charset="UTF-8" />
+<title>Upcoming Trains — Wilson</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-    body {
-        margin: 0;
-        font-family: Arial, sans-serif;
-        background-color: #f4f4f4;
-    }
-    header {
-        background-color: #1976d2;
-        color: white;
-        text-align: center;
-        padding: 1rem;
-        font-size: 1.5rem;
-    }
-    .container {
-        max-width: 800px;
-        margin: 2rem auto;
-        position: relative;
-        height: 400px;
-        overflow: hidden;
-    }
-    .card {
-        position: absolute;
-        left: 0;
-        width: 90%;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 1rem;
-        color: white;
-        border-radius: 10px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        transform: translateY(100%);
-        opacity: 0;
-        transition: transform 1s ease, opacity 1s ease;
-    }
-    .countdown {
-        font-weight: bold;
-        font-size: 1.2rem;
-        padding: 0.3rem 0.6rem;
-        border-radius: 10px;
-        min-width: 60px;
-        text-align: center;
-    }
+  body { margin:0; font-family: system-ui, Arial, sans-serif; background:#f4f4f4; }
+  header { background:#1976d2; color:#fff; text-align:center; padding:1rem; font-size:1.5rem; }
+  .container { max-width:800px; margin:18px auto; height:400px; position:relative; overflow:hidden; }
+  .card {
+    position:absolute; left:0; width:90%; display:flex; justify-content:space-between; align-items:center;
+    padding:1rem; color:#fff; border-radius:10px; box-shadow:0 2px 6px rgba(0,0,0,0.12);
+    transform:translateY(100%); opacity:0; transition:transform 1s ease, opacity 1s ease;
+  }
+  .countdown { font-weight:700; font-size:1.1rem; padding:.25rem .5rem; border-radius:8px; text-align:center; min-width:64px; background:rgba(255,255,255,0.12); }
+  .line-text { font-size:1rem; opacity:0.95; }
+  .error { color:#900; padding:8px; background:#fee; border-radius:6px; margin:8px; text-align:center;}
 </style>
 </head>
 <body>
-<header>Upcoming Trains</header>
+<header>Upcoming Trains — Wilson</header>
 <div class="container" id="train-list"></div>
+<div id="error-box" style="max-width:640px;margin:8px auto;display:none"></div>
 
 <script>
+/* Frontend logic
+ - Poll every 60s
+ - If any countdown hits 0 => animate removal and schedule extra fetch after 10s
+ - Smooth slide animations kept from previous outline
+*/
+
+const POLL_MS = 60 * 1000;
+const EXTRA_DELAY_MS = 10 * 1000;
+const TRANSITION_MS = 1000; // matches CSS transition
 const container = document.getElementById('train-list');
-let trains = [];
+const errorBox = document.getElementById('error-box');
 const cardHeight = 80;
 
-function randomTrain() {
-    const directions = ['North','South'];
-    const lines = ['Red','Purple'];
-    const etaMinutes = Math.floor(Math.random()*20)+1;
-    const etaSeconds = Math.floor(Math.random()*60);
-    const now = new Date();
-    const eta = new Date(now.getTime() + etaMinutes*60000 + etaSeconds*1000);
-    const line = lines[Math.floor(Math.random()*lines.length)];
-    return {direction: directions[Math.floor(Math.random()*directions.length)], line, eta};
+let arrivals = [];     // array of arrival objects {line,direction,eta (ISO string)}
+let cardEls = [];      // DOM elements in same order as arrivals
+let animating = false;
+let extraFetchTimer = null;
+let regularPollTimer = null;
+
+function clearError(){ errorBox.style.display='none'; errorBox.innerText=''; }
+function showError(msg){ errorBox.style.display='block'; errorBox.className='error'; errorBox.innerText=msg; }
+
+function lineColor(line) {
+  if(!line) return '#1976d2';
+  const l = line.toLowerCase();
+  if(l.includes('red')) return '#d32f2f';
+  if(l.includes('purple')) return '#6a1b9a';
+  return '#1976d2';
 }
 
-function getLineColor(line){
-    if(line==='Red') return '#d32f2f';
-    if(line==='Purple') return '#6a1b9a';
-    return '#1976d2';
+/* Helper: create card that animates from startY -> endY */
+function createCard(arr, startY, endY) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.style.background = lineColor(arr.line);
+  el.style.transform = `translateY(${startY}px)`;
+  el.style.opacity = '0';
+  el.innerHTML = `<div class="line-text">${arr.line || '—'} Line — ${arr.direction || ''}</div><div class="countdown">--</div>`;
+  container.appendChild(el);
+
+  // force layout so initial transform is registered
+  void el.offsetHeight;
+
+  // animate to end position
+  requestAnimationFrame(() => {
+    el.style.transform = `translateY(${endY}px)`;
+    el.style.opacity = '1';
+  });
+  return el;
 }
 
-function createCard(train, startY, endY){
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.backgroundColor = getLineColor(train.line);
-    card.style.transform = `translateY(${startY}px)`;
-    card.style.opacity = '0';
-    card.innerHTML = `<div>${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div><div class='countdown'></div>`;
-    container.appendChild(card);
-
-    // Force browser to register initial position
-    card.offsetHeight;
-
-    // Animate to end position
-    requestAnimationFrame(()=>{
-        card.style.transform = `translateY(${endY}px)`;
-        card.style.opacity = '1';
-    });
-    return card;
+/* Render arrivals completely (used on first load and after fetch)
+   We keep this creation minimal and animated so that new bottom card slides in properly */
+function renderAllFromArrivals() {
+  // clear existing elements
+  container.innerHTML = '';
+  cardEls = [];
+  arrivals.forEach((a, i) => {
+    // position them directly at their slot (start == end for initial rendering)
+    const el = createCard(a, i*cardHeight, i*cardHeight);
+    cardEls.push(el);
+  });
 }
 
-let cardElements = [];
+/* Update countdown numbers (and detect zero crossing) */
+function updateCountdownsAndDetect() {
+  const now = Date.now();
+  let firstReachedZero = false;
 
-function renderInitial(){
-    trains = Array.from({length:5}, randomTrain);
-    trains.forEach((t,i)=>{
-        const card = createCard(t, i*cardHeight, i*cardHeight);
-        cardElements.push(card);
-    });
+  cardEls.forEach((el, i) => {
+    const arr = arrivals[i];
+    const cd = el.querySelector('.countdown');
+    if(!arr || !arr.eta) {
+      cd.innerText = '--';
+      return;
+    }
+    // robust parse: accept "YYYYMMDD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" etc.
+    let t = Date.parse(arr.eta);
+    if(isNaN(t)) t = Date.parse(arr.eta.replace(' ', 'T'));
+    if(isNaN(t)) { cd.innerText = '--'; return; }
+    const diffSec = Math.max(0, Math.floor((t - now)/1000));
+    const mm = Math.floor(diffSec/60);
+    const ss = diffSec % 60;
+    cd.innerText = `${mm}m ${String(ss).padStart(2,'0')}s`;
+
+    // detect first card arriving
+    if(i === 0 && diffSec === 0) firstReachedZero = true;
+  });
+
+  // If first arrival reached zero, trigger animate removal once and schedule extra fetch
+  if(firstReachedZero && !animating) {
+    // mark animating to avoid duplicates
+    animating = true;
+    animateFirstCardAway();
+    // schedule an extra fetch after EXTRA_DELAY_MS (10s)
+    if(extraFetchTimer) clearTimeout(extraFetchTimer);
+    extraFetchTimer = setTimeout(()=> { extraFetchTimer = null; fetchAndUpdate(); }, EXTRA_DELAY_MS);
+  }
 }
 
-function updateCountdowns(){
-    const now = new Date();
-    cardElements.forEach((card,i)=>{
-        const eta = trains[i].eta;
-        let diff = Math.max(0,Math.floor((eta-now)/1000));
-        const minutes = Math.floor(diff/60);
-        const seconds = diff%60;
-        card.querySelector('.countdown').innerText=`${minutes}m ${seconds}s`;
-    });
+/* Animate the first card away and then after transition fetch to refresh arrivals */
+function animateFirstCardAway() {
+  if(cardEls.length === 0) { animating = false; return; }
+  const first = cardEls.shift();
+  // slide it up and fade
+  first.style.transform = `translateY(-120%)`;
+  first.style.opacity = '0';
+
+  // Move remaining cards visually up by updating their transform to new index*height
+  cardEls.forEach((el, i) => {
+    el.style.transform = `translateY(${i*cardHeight}px)`;
+  });
+
+  // after transition ends remove the element and fetch new arrivals (or let regular poll handle)
+  setTimeout(() => {
+    try { container.removeChild(first); } catch(e) {}
+    // after it is removed, trigger immediate fetch (we also have scheduled EXTRA_DELAY_MS)
+    fetchAndUpdate().finally(() => { animating = false; });
+  }, TRANSITION_MS);
 }
 
-function arriveTrain(){
-    const firstCard = cardElements.shift();
-    firstCard.style.opacity='0';
-    firstCard.style.transform = `translateY(-120%)`;
-    trains.shift();
+/* Fetch from /api/trains and update arrivals array; render */
+async function fetchAndUpdate() {
+  try {
+    const res = await fetch('/api/trains');
+    if(!res.ok) {
+      const text = await res.text().catch(()=>'');
+      showError('Failed to fetch CTA data');
+      console.error('CTA fetch failed', res.status, text);
+      return;
+    }
+    const j = await res.json();
+    if(!j.ok) {
+      showError('CTA API error');
+      console.error('CTA API error', j);
+      return;
+    }
+    clearError();
+    // Normalize to objects with line, direction, eta (ISO-like). Keep only first 5 arrivals.
+    arrivals = (j.arrivals || []).slice(0,5).map(a => ({
+      line: a.line || '',
+      direction: a.direction || (a.raw && (a.raw.trDr || a.raw.dest)) || '',
+      eta: a.eta || (a.raw && (a.raw.arrT || a.raw.prdt)) || null,
+      raw: a.raw || {}
+    }));
 
-    // Move existing cards up
-    cardElements.forEach((card,i)=>{
-        card.style.transform = `translateY(${i*cardHeight}px)`;
-    });
+    // if we currently have no cards, render all
+    if(cardEls.length === 0) {
+      renderAllFromArrivals();
+      updateCountdownsAndDetect();
+      return;
+    }
 
-    // Add new card after transition
-    setTimeout(()=>{
-        container.removeChild(firstCard);
-        const newTrain = randomTrain();
-        trains.push(newTrain);
-        const newCard = createCard(newTrain, cardElements.length*cardHeight + cardHeight, cardElements.length*cardHeight);
-        cardElements.push(newCard);
-    }, 1000); // match transition duration
+    // If we already have cards and not animating, attempt a smooth update:
+    // Strategy: if the first arrival time changed (or number changed) we will re-render smoothly:
+    // For simplicity and reliable animation, remove all existing DOM and re-create in-place:
+    // (we create each card with start==end so they appear in place — only future arrival animations will animate)
+    renderAllFromArrivals();
+    updateCountdownsAndDetect();
+
+  } catch (err) {
+    showError('Network error fetching CTA');
+    console.error(err);
+  }
 }
 
-renderInitial();
-updateCountdowns();
-setInterval(updateCountdowns,1000);
-setInterval(arriveTrain,30000);
+/* initial load & polling */
+fetchAndUpdate();
+regularPollTimer = setInterval(fetchAndUpdate, POLL_MS);
+setInterval(updateCountdownsAndDetect, 1000);
 </script>
 </body>
 </html>
