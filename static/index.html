@@ -2,72 +2,95 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>CTA Train Tracker</title>
+<title>Upcoming Trains</title>
 <style>
-body { margin:0; font-family: sans-serif; background:black; color:white; }
-header { background:#007bff; color:white; text-align:center; font-size:3em; padding:10px; }
-#train-container { padding: 20px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
-.train-card { display:flex; justify-content:space-between; padding:20px; border-radius:12px; color:black; transition: transform 1s, opacity 1s; }
-.train-left { flex:4; font-size:2em; }
-.train-countdown, .train-eta { flex:1; text-align:center; font-size:2em; background:white; border-radius:8px; padding:5px; }
+body { margin:0; font-family: Arial,sans-serif; background:black; color:white; }
+header { background-color: #1976d2; color:white; text-align:center; padding:1rem; font-size:2rem; }
+.container { max-width:800px; margin:2rem auto; position:relative; height:400px; overflow:hidden; }
+.card { position:absolute; left:0; width:95%; display:flex; justify-content:space-between; align-items:center; padding:1rem; color:white; border-radius:12px; transition: transform 1s ease, opacity 1s ease; }
+.countdown { font-weight:bold; font-size:1.2rem; padding:0.3rem 0.6rem; border-radius:10px; min-width:60px; text-align:center; background:rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
 <header>Upcoming Trains</header>
-<div id="train-container"></div>
+<div class="container" id="train-list"></div>
 <script>
+const container = document.getElementById('train-list');
 let trains = [];
+let cardElements = [];
+const cardHeight = 80;
+const routeColors = {Red:'#d32f2f',Purple:'#6a1b9a',Blue:'#1976d2'};
 
 function fetchTrains(){
     fetch('/api/trains')
-        .then(r=>r.json())
-        .then(data=>{
-            trains = data.map(t => ({
-                ...t,
-                eta: new Date(t.eta_iso)
-            }));
-            updateUI();
-        });
-}
-
-function updateUI(){
-    const container = document.getElementById('train-container');
-    container.innerHTML = '';
-    trains.forEach(t => {
-        const card = document.createElement('div');
-        card.className = 'train-card';
-        card.style.background = routeColor(t.route);
-        card.innerHTML = `
-            <div class="train-left">${t.route} to ${t.dest}</div>
-            <div class="train-countdown">in 0:00</div>
-            <div class="train-eta">${formatTime(t.eta)}</div>
-        `;
-        container.appendChild(card);
+    .then(r=>r.json())
+    .then(data=>{
+        trains = data.map(t=>({ ...t, eta: new Date(t.eta_iso) }));
+        renderCards();
     });
 }
 
-function routeColor(route){
-    const map = {"Red":"#FF0000","Blue":"#0000FF","Brn":"#A52A2A","G":"#00FF00","Org":"#FFA500","Pink":"#FF69B4","P":"#800080","Y":"#FFFF00","Purple":"#800080"};
-    return map[route]||'#FFFFFF';
+function renderCards(){
+    container.innerHTML='';
+    cardElements=[];
+    trains.forEach((t,i)=>{
+        const card = document.createElement('div');
+        card.className='card';
+        card.style.backgroundColor=routeColors[t.route]||'#1976d2';
+        card.style.transform=`translateY(${i*cardHeight}px)`;
+        card.style.opacity='1';
+        card.innerHTML=`<div>${t.route} Line - ${t.dest}</div><div class='countdown'></div>`;
+        container.appendChild(card);
+        cardElements.push(card);
+    });
 }
-
-function formatTime(d){return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});}
 
 function updateCountdowns(){
     const now = new Date();
-    const container = document.getElementById('train-container');
-    Array.from(container.children).forEach((card,i)=>{
-        const eta = trains[i].eta;
-        let diff = Math.max(0, (eta-now)/1000);
-        let m = Math.floor(diff/60);
-        let s = Math.floor(diff%60);
-        card.querySelector('.train-countdown').textContent = `in ${m}:${s.toString().padStart(2,'0')}`;
+    cardElements.forEach((card,i)=>{
+        const eta=trains[i].eta;
+        let diff=Math.max(0,Math.floor((eta-now)/1000));
+        const m=Math.floor(diff/60);
+        const s=diff%60;
+        card.querySelector('.countdown').innerText=`${m}:${s.toString().padStart(2,'0')}`;
     });
 }
 
+function slideTrain(){
+    if(cardElements.length===0) return;
+    const firstCard=cardElements.shift();
+    firstCard.style.transform=`translateY(-120%)`;
+    firstCard.style.opacity='0';
+    trains.shift();
+
+    cardElements.forEach((card,i)=>{
+        card.style.transform=`translateY(${i*cardHeight}px)`;
+    });
+
+    setTimeout(()=>{
+        container.removeChild(firstCard);
+        fetch('/api/trains').then(r=>r.json()).then(data=>{
+            const newTrain = { ...data[0], eta: new Date(data[0].eta_iso) };
+            trains.push(newTrain);
+            const newCard = document.createElement('div');
+            newCard.className='card';
+            newCard.style.backgroundColor=routeColors[newTrain.route]||'#1976d2';
+            newCard.style.transform=`translateY(${cardElements.length*cardHeight + cardHeight}px)`;
+            newCard.style.opacity='1';
+            newCard.innerHTML=`<div>${newTrain.route} Line - ${newTrain.dest}</div><div class='countdown'></div>`;
+            container.appendChild(newCard);
+            requestAnimationFrame(()=>{
+                newCard.style.transform=`translateY(${cardElements.length*cardHeight}px)`;
+            });
+            cardElements.push(newCard);
+        });
+    },1000);
+}
+
 fetchTrains();
-setInterval(fetchTrains, 60000); // refresh every minute
-setInterval(updateCountdowns, 1000); // update countdowns every second
+setInterval(fetchTrains,60000);
+setInterval(updateCountdowns,1000);
+setInterval(slideTrain,30000);
 </script>
 </body>
 </html>

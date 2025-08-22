@@ -22,7 +22,7 @@ ROUTE_COLORS = {
 
 def fetch_arrivals():
     try:
-        url = f"http://lapi.transitchicago.com/api/1.0/ttarrivals.aspx?key={API_KEY}&mapid={MAPID}&max=5&outputType=JSON"
+        url = f"http://lapi.transitchicago.com/api/1.0/ttarrivals.aspx?key={API_KEY}&mapid={MAPID}&max=7&outputType=JSON"
         response = requests.get(url)
         response.raise_for_status()
         return response.json().get("ctatt", {}).get("eta", [])
