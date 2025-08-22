@@ -1,40 +1,112 @@
-cat > index.html <<'EOF'
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Barebones CTA + Plane</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <title>Upcoming Trains</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+        }
+        header {
+            background-color: #1976d2;
+            color: white;
+            text-align: center;
+            padding: 1rem;
+            font-size: 1.5rem;
+        }
+        .container {
+            max-width: 600px;
+            margin: 2rem auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .card {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .train-info {
+            font-size: 1rem;
+        }
+        .countdown {
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #1976d2;
+        }
+    </style>
 </head>
 <body>
-  <div id="root">
-    <section id="train-view" class="view visible">
-      <header><h1>CTA — Upcoming Trains</h1></header>
-      <main id="trains" class="list"></main>
-      <footer class="footer">Demo: sliding cards</footer>
-    </section>
+    <header>Upcoming Trains</header>
+    <div class="container" id="train-list">
+        <!-- Train cards will be injected here -->
+    </div>
 
-    <section id="plane-view" class="view hidden">
-      <header><h1>Plane — Detected Aircraft</h1></header>
-      <main id="plane-main">
-        <div id="plane-map">
-          <svg id="mini-map" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet">
-            <rect width="100%" height="100%" fill="#071124"></rect>
-            <g id="plane-layer"></g>
-          </svg>
-        </div>
-        <div id="plane-info">
-          <div id="flight">Flight: —</div>
-          <div id="alt">Alt: —</div>
-          <div id="spd">Spd: —</div>
-        </div>
-      </main>
-      <footer class="footer">Demo: simple SVG arrow</footer>
-    </section>
-  </div>
+    <script>
+        function randomTrain() {
+            const directions = ["North", "South"];
+            const lines = ["Red", "Purple"];
+            const etaMinutes = Math.floor(Math.random() * 20) + 1; // 1-20 minutes
 
-  <script src="app.js"></script>
+            const now = new Date();
+            const eta = new Date(now.getTime() + etaMinutes * 60000);
+
+            return {
+                direction: directions[Math.floor(Math.random() * directions.length)],
+                line: lines[Math.floor(Math.random() * lines.length)],
+                eta: eta
+            };
+        }
+
+        function renderTrains() {
+            const container = document.getElementById("train-list");
+            container.innerHTML = "";
+
+            const trains = Array.from({length: 5}, randomTrain);
+
+            trains.forEach(train => {
+                const card = document.createElement("div");
+                card.className = "card";
+
+                const info = document.createElement("div");
+                info.className = "train-info";
+                info.innerText = `${train.line} Line - ${train.direction}bound | ETA: ${train.eta.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`;
+
+                const countdown = document.createElement("div");
+                countdown.className = "countdown";
+                countdown.dataset.eta = train.eta;
+                countdown.innerText = etaMinutesRemaining(train.eta);
+
+                card.appendChild(info);
+                card.appendChild(countdown);
+                container.appendChild(card);
+            });
+        }
+
+        function etaMinutesRemaining(eta) {
+            const now = new Date();
+            const diffMs = new Date(eta) - now;
+            const diffMin = Math.max(0, Math.floor(diffMs / 60000));
+            return diffMin + " min";
+        }
+
+        function updateCountdowns() {
+            document.querySelectorAll(".countdown").forEach(el => {
+                const eta = new Date(el.dataset.eta);
+                el.innerText = etaMinutesRemaining(eta);
+            });
+        }
+
+        // Initial render
+        renderTrains();
+        // Update countdown every 30s
+        setInterval(updateCountdowns, 30000);
+    </script>
 </body>
 </html>
-EOF
