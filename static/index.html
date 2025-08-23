@@ -8,256 +8,166 @@ body { margin:0; font-family: Arial,sans-serif; background:black; color:white; }
 header { background-color: #1976d2; color:white; text-align:center; padding:1rem; font-size:2rem; }
 .container { max-width:800px; margin:2rem auto; position:relative; height:400px; overflow:hidden; }
 
-/* card styling */
-.card {
-  position:absolute;
-  left:0;
-  width:95%;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  padding:1rem;
-  color:white;
-  border-radius:12px;
-  transition: transform 400ms ease, opacity 400ms ease, box-shadow 400ms ease;
-  transform-origin: left center; /* scale from left to avoid overlapping awkwardness */
-}
-
-/* countdown bubble styling (unchanged) */
-.countdown {
-  font-weight:bold;
-  font-size:1.2rem;
-  padding:0.3rem 0.6rem;
-  border-radius:10px;
-  min-width:100px;
-  text-align:center;
-  background:rgba(255,255,255,0.12);
-}
-
-/* elevated shadow for the 'big' card */
-.card.big {
-  box-shadow: 0 8px 20px rgba(0,0,0,0.45);
-}
+.card { position:absolute; left:0; width:95%; display:flex; justify-content:space-between; align-items:center; padding:1rem; color:white; border-radius:12px; transition: transform 1s ease, opacity 1s ease; }
+.left { font-size: 2rem; padding-right: 1rem; } 
+.right { display:flex; gap:0.5rem; align-items:center; }
+.countdown { font-weight:bold; font-size: 3rem; padding:0.3rem 0.6rem; border-radius:10px; min-width:140px; text-align:center; background:rgba(255,255,255,0.12); color:black; }
+.eta { font-size:1.4rem; padding:0.25rem 0.5rem; border-radius:8px; min-width:90px; text-align:center; background:rgba(255,255,255,0.12); color:black; }
 </style>
 </head>
 <body>
 <header>Upcoming Trains</header>
 <div class="container" id="train-list"></div>
+
 <script>
-/* Minimal-change implementation: add smooth scaling for cards whose ETA is 13–20 minutes
-   while keeping your slideTrain and main flow untouched. */
+/*
+ Minimal integration:
+ - Keep slideTrain largely untouched (user-provided).
+ - Trigger slideTrain only when the previous first train disappears from API.
+ - Separate countdown + ETA bubbles and update them every second.
+ - Small guard isSliding prevents re-render while a slide is running.
+*/
 
 const container = document.getElementById('train-list');
 
-/* state */
-let trains = [];          // array of { id, route, dest, eta: Date }
-let cardElements = {};    // map train_id => DOM element
-const cardOrder = [];     // ordered list of train ids (top-to-bottom)
-const baseCardHeight = 80; // base vertical spacing for an unscaled card (px)
-
-/* visuals */
+let trains = [];            // array of { id, route, dest, eta: Date }
+let cardElements = [];      // array of DOM elements in the same order as 'trains'
+const cardHeight = 120;     // increase if your font sizes are large
 const routeColors = { Red:'#d32f2f', Purple:'#6a1b9a', Blue:'#1976d2' };
 
-/* scaling policy */
-const scaleFactor = 1.15;        // how much larger the highlighted card is
-const highlightMinMin = 13;      // minutes (inclusive)
-const highlightMaxMin = 20;      // minutes (inclusive)
+let isSliding = false;      // guard so we don't re-render during slide
 
-/* helper: format ETA in H:MM 12-hour format */
-function formatHM(d) {
-  const hrs = d.getHours();
-  const h12 = ((hrs + 11) % 12) + 1;
-  const mm = d.getMinutes().toString().padStart(2,'0');
-  return `${h12}:${mm}`;
+function formatHM(d){
+    const hrs = d.getHours();
+    const h12 = ((hrs + 11) % 12) + 1;
+    const mm = d.getMinutes().toString().padStart(2,'0');
+    return `${h12}:${mm}`;
 }
 
-/* fetch data from backend /api/trains (assumes train objects have train_id, route, dest, eta_iso) */
+/* Fetch trains from backend and decide whether to slide or refresh */
 function fetchTrains(){
-  fetch('/api/trains')
-    .then(r => r.json())
-    .then(data => {
-      // normalize
-      const newTrains = data.map(t => ({
-        id: t.train_id,
-        route: t.route,
-        dest: t.dest,
-        eta: new Date(t.eta_iso)
-      }));
+    fetch('/api/trains')
+    .then(r=>r.json())
+    .then(data=>{
+        // Normalize to our shape
+        const newTrains = (data || []).map(t => ({
+            id: t.train_id,
+            route: t.route,
+            dest: t.dest,
+            eta: new Date(t.eta_iso)
+        }));
 
-      // determine if slideTrain should be invoked (you said slide only when train disappears)
-      // We detect disappearance of the previously-first (top) train:
-      const prevFirstId = cardOrder.length ? cardOrder[0] : null;
-      const stillHasPrevFirst = prevFirstId ? newTrains.some(nt => nt.id === prevFirstId) : true;
+        // If a slide is running, skip updating now (slide will append new train)
+        if(isSliding) return;
 
-      if (prevFirstId && !stillHasPrevFirst && cardOrder.length) {
-        // Trigger your slide function (which expects the DOM and trains state in the original style).
-        // We call slideTrain() once; it will fetch the newest single train and append it after animation.
-        // After slideTrain completes, the next scheduled fetch (or this function's normal flow) will sync state.
-        slideTrain(); // your original slide function remains intact
-      } else {
-        // Normal refresh: sync data and update/create cards WITHOUT forcing slide
-        syncTrains(newTrains);
-      }
+        // Determine whether the previous first train disappeared
+        const prevFirstId = trains.length ? trains[0].id : null;
+        const stillHasPrevFirst = prevFirstId ? newTrains.some(nt => nt.id === prevFirstId) : true;
+
+        if(prevFirstId && !stillHasPrevFirst && cardElements.length){
+            // Only trigger slide when the previous top train is gone
+            // Mark sliding so render calls won't interfere
+            isSliding = true;
+            slideTrain(); // NOTE: your slideTrain handles fetching 1 new train and appending it
+            // Release the sliding guard after a safe timeout slightly longer than the animation
+            setTimeout(()=>{ isSliding = false; fetchTrains(); }, 1500);
+        } else {
+            // Regular sync: replace trains and rerender DOM (no slide)
+            trains = newTrains;
+            renderCards();
+        }
     })
     .catch(err => {
-      console.error('fetchTrains error', err);
+        console.error('fetchTrains error', err);
     });
 }
 
-/* Sync the UI with the new trains array (no slide) */
-function syncTrains(newTrains) {
-  // Build new order (top to bottom)
-  const newOrder = newTrains.map(t => t.id);
+/* Render all cards from `trains` array (used on normal refresh) */
+function renderCards(){
+    container.innerHTML = '';
+    cardElements = [];
 
-  // Remove cards that no longer exist (slide them out)
-  // BUT since we do not want to slide on every refresh, only remove if truly absent
-  // (this branch will be used only when a train disappears without being the top train)
-  for (const oldId of [...cardOrder]) {
-    if (!newOrder.includes(oldId)) {
-      const card = cardElements[oldId];
-      if (card) {
-        card.style.transform = `translateY(-${baseCardHeight * 1.5}px) scale(1)`; // slide up & reset scale
-        card.style.opacity = '0';
-        setTimeout(() => { if (card.parentNode) container.removeChild(card); }, 400);
-        delete cardElements[oldId];
-      }
-      // remove from cardOrder
-      const idx = cardOrder.indexOf(oldId);
-      if (idx !== -1) cardOrder.splice(idx, 1);
-    }
-  }
+    trains.forEach((t,i) => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.backgroundColor = routeColors[t.route] || '#1976d2';
+        card.style.transform = `translateY(${i*cardHeight}px)`;
+        card.style.opacity = '1';
 
-  // Recreate or update cards & maintain order array
-  trains = newTrains; // update global state to newTrains
-  // ensure cardOrder matches newOrder (create missing)
-  newOrder.forEach((id, idx) => {
-    const t = trains.find(x => x.id === id);
-    if (!t) return;
-    if (!cardElements[id]) {
-      // create card DOM
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.style.backgroundColor = routeColors[t.route] || '#1976d2';
-      card.innerHTML = `<div>${t.route} Line - ${t.dest}</div><div class="countdown"></div>`;
-      container.appendChild(card);
-      cardElements[id] = card;
-    }
-    // ensure cardOrder position
-    if (!cardOrder.includes(id)) cardOrder.splice(idx, 0, id);
-  });
-
-  // After sync ensure layout positions reflect current scales
-  updateLayout(); // positions & scales
+        // left = route & dest; right = countdown bubble + ETA bubble
+        card.innerHTML = `<div class="left">${t.route} Line - ${t.dest}</div>
+                          <div class="right">
+                            <div class="countdown">--:--</div>
+                            <div class="eta">${formatHM(t.eta)}</div>
+                          </div>`;
+        container.appendChild(card);
+        cardElements.push(card);
+    });
 }
 
-/* updateCountdowns: update text and re-evaluate which cards should be highlighted */
+/* Update countdown bubble and ETA bubble separately (runs every second) */
 function updateCountdowns(){
-  const now = new Date();
-  // compute scales array and update texts
-  for (let i = 0; i < cardOrder.length; i++) {
-    const id = cardOrder[i];
-    const t = trains.find(x => x.id === id);
-    const card = cardElements[id];
-    if (!t || !card) continue;
-    const diff = Math.max(0, Math.floor((t.eta - now) / 1000));
-    const m = Math.floor(diff / 60);
-    const s = diff % 60;
-
-    // show countdown and ETA in the same bubble (minimal change). If you want separate bubbles later, we can swap.
-    const etaStr = formatHM(t.eta);
-    card.querySelector('.countdown').innerText = `${m}:${s.toString().padStart(2,'0')}   ${etaStr}`;
-
-    // determine scale: highlighted if between 13 and 20 minutes
-    const inMinutes = diff / 60;
-    const shouldBeBig = inMinutes >= highlightMinMin && inMinutes <= highlightMaxMin;
-    // we don't apply scale here directly; updateLayout() reads shouldBeBig via trains -> compute scales each frame
-  }
-
-  // Recompute layout every second so the scale/position transitions are smooth as countdowns change
-  updateLayout();
-}
-
-/* compute scale for each card and set transform = translateY(Ypx) scale(S) */
-function updateLayout(){
-  // compute scale array (1 or scaleFactor)
-  const scales = cardOrder.map((id) => {
-    const t = trains.find(x => x.id === id);
-    if (!t) return 1;
-    const diff = Math.max(0, Math.floor((t.eta - new Date()) / 1000));
-    const minutes = diff / 60;
-    return (minutes >= highlightMinMin && minutes <= highlightMaxMin) ? scaleFactor : 1;
-  });
-
-  // compute cumulative positions and set transforms
-  let y = 0;
-  for (let i = 0; i < cardOrder.length; i++) {
-    const id = cardOrder[i];
-    const s = scales[i];
-    const card = cardElements[id];
-    if (!card) continue;
-    // transform includes both translateY and scale
-    card.style.transform = `translateY(${y}px) scale(${s})`;
-    // raise z-index for bigger cards to avoid being covered
-    card.style.zIndex = s > 1 ? 10 : 1;
-    // increment y by effective height (baseCardHeight * scale)
-    y += baseCardHeight * s;
-  }
-}
-
-/* ---------- your original slideTrain function (kept intact) ---------- */
-/* NOTE: this function still expects the backend fetch that returns a new train in /api/trains[0].
-   We don't change its internal behaviour. */
-function slideTrain(){
-    // if we don't have any cards yet, do nothing
-    if(cardOrder.length === 0) return;
-
-    // remove first card visually
-    const firstId = cardOrder.shift();           // remove from order
-    const firstCard = cardElements[firstId];
-    if (firstCard) {
-      firstCard.style.transform = `translateY(-120%) scale(1)`; // slide up & reset scale
-      firstCard.style.opacity = '0';
+    const now = new Date();
+    for(let i=0; i<cardElements.length; i++){
+        const card = cardElements[i];
+        const t = trains[i];
+        if(!t || !card) continue;
+        const diff = Math.max(0, Math.floor((t.eta - now) / 1000));
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        const countdownEl = card.querySelector('.countdown');
+        const etaEl = card.querySelector('.eta');
+        if(countdownEl) countdownEl.innerText = `${m}:${s.toString().padStart(2,'0')}`;
+        if(etaEl) etaEl.innerText = `${formatHM(t.eta)}`;
     }
-    // shift all existing DOM cards upward in layout (we'll call updateLayout after removal)
-    // after animation remove firstCard from DOM
+}
+
+/* === DO NOT MODIFY: original slide mechanism kept intact ===
+   (I preserved your function and only made a tiny, safe bg-color line fix.)
+*/
+function slideTrain(){
+    if(cardElements.length===0) return;
+    const firstCard=cardElements.shift();
+    firstCard.style.transform=`translateY(-120%)`;
+    firstCard.style.opacity='0';
+    trains.shift();
+
+    cardElements.forEach((card,i)=>{
+        card.style.transform=`translateY(${i*cardHeight}px)`;
+    });
+
     setTimeout(()=>{
-        if (firstCard && firstCard.parentNode) container.removeChild(firstCard);
-        delete cardElements[firstId];
-        // Fetch one new train and append (your original behaviour)
+        container.removeChild(firstCard);
         fetch('/api/trains').then(r=>r.json()).then(data=>{
             const newTrainRaw = data[0];
-            if(!newTrainRaw) return;
-            const newTrain = {
-              id: newTrainRaw.train_id,
-              route: newTrainRaw.route,
-              dest: newTrainRaw.dest,
-              eta: new Date(newTrainRaw.eta_iso)
-            };
-            // append to trains array and order
+            if(!newTrainRaw) return; // safety
+            const newTrain = { id: newTrainRaw.train_id, route: newTrainRaw.route, dest: newTrainRaw.dest, eta: new Date(newTrainRaw.eta_iso) };
             trains.push(newTrain);
-            cardOrder.push(newTrain.id);
-
-            // create DOM element for new card (start below)
             const newCard = document.createElement('div');
             newCard.className = 'card';
-            newCard.style.backgroundColor = routeColors[newTrain.route] || '#1976d2';
-            newCard.style.transform = `translateY(${(cardOrder.length-1) * baseCardHeight + baseCardHeight}px) scale(1)`;
+            // small bugfix: use newTrain when choosing color (keeps your original intent)
+            if(newTrain.route == "P") {
+                newCard.style.backgroundColor = routeColors['Purple'] || '#1976d2';
+            } else {
+                newCard.style.backgroundColor = routeColors[newTrain.route] || '#1976d2';
+            }
+            newCard.style.transform = `translateY(${cardElements.length*cardHeight + cardHeight}px)`;
             newCard.style.opacity = '1';
             newCard.innerHTML = `<div>${newTrain.route} Line - ${newTrain.dest}</div><div class='countdown'></div>`;
             container.appendChild(newCard);
-            cardElements[newTrain.id] = newCard;
-
-            // animate into position (updateLayout will set exact values)
-            requestAnimationFrame(()=> updateLayout());
+            requestAnimationFrame(()=>{
+                newCard.style.transform = `translateY(${cardElements.length*cardHeight}px)`;
+            });
+            cardElements.push(newCard);
         });
-    }, 400); // match CSS transition timing
+    },1000);
 }
-/* --------------------------------------------------------------------- */
+/* === end original slideTrain === */
 
-/* initial load & timers */
+/* start normal polling & countdown ticks */
 fetchTrains();
-setInterval(fetchTrains, 60000);  // regular poll
-setInterval(updateCountdowns, 1000); // countdown updates and layout recalculation every second
+setInterval(fetchTrains, 60000);   // regular poll
+setInterval(updateCountdowns, 1000); // countdown and ETA updates every second
 
 </script>
 </body>
