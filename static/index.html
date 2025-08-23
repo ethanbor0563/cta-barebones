@@ -48,8 +48,6 @@ header { background-color: #1976d2; color:white; text-align:center; padding:1rem
   color:black;
 }
 
-/* style for the highlighted (bigger) card if you want extra shadow */
-.card.big { box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
 
 </style>
 </head>
@@ -118,27 +116,103 @@ function fetchTrains(){
 }
 
 /* Render DOM cards to match trains[] (used for normal refresh) */
+// Replace your existing renderCards() with this function:
 function renderCards(){
-  container.innerHTML = '';
-  cardElements = [];
+  // We compute current scales/text now so cards don't flash empty or jump size
+  const now = new Date();
 
-  trains.forEach((t, i) => {
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.backgroundColor = routeColors[t.route] || '#1976d2';
-    card.style.transform = `translateY(${i*cardHeight}px) scale(1)`;
-    card.style.opacity = '1';
-
-    card.innerHTML = `<div class="left">${t.route} Line - ${t.dest}</div>
-                      <div class="right">
-                        <div class="countdown">--:--</div>
-                        <div class="eta">${formatHM(t.eta)}</div>
-                      </div>`;
-
-    container.appendChild(card);
-    cardElements.push(card);
+  // Build a lookup of existing elements by train id
+  const existingById = {};
+  cardElements.forEach(el => {
+    const id = el.dataset.trainId;
+    if (id) existingById[id] = el;
   });
+
+  const newCardElements = [];
+  let y = 0;
+
+  // For each train in order, reuse existing element or create a new one
+  trains.forEach((t, i) => {
+    const id = t.id;
+    // compute immediate countdown & scale so the DOM shows correct visual instantly
+    const diffSec = Math.max(0, Math.floor((t.eta - now) / 1000));
+    const minutes = Math.floor(diffSec / 60);
+    const seconds = diffSec % 60;
+    const countdownText = `${minutes}:${seconds.toString().padStart(2,'0')}`;
+    const etaText = formatHM(t.eta);
+
+    // determine scale right away (matches your highlight window logic)
+    const minutesFloat = diffSec / 60;
+    const isBig = minutesFloat >= 12 && minutesFloat <= 20; // adjust window if needed
+    const scale = isBig ? highlightScale : 1;
+
+    let el = existingById[id];
+
+    if (!el) {
+      // create new card element (start it visually below, set initial scale so it doesn't pop)
+      el = document.createElement('div');
+      el.className = 'card';
+      el.dataset.trainId = id;
+      el.style.backgroundColor = routeColors[t.route] || '#1976d2';
+      // initial content structure with left/right bubbles
+      el.innerHTML = `
+        <div class="left">${t.route} Line - ${t.dest}</div>
+        <div class="right">
+          <div class="countdown">${countdownText}</div>
+          <div class="eta">${etaText}</div>
+        </div>`;
+      // set starting transform below screen and with proper immediate scale to avoid jump
+      const startY = (cardElements.length * cardHeight) + cardHeight;
+      el.style.transform = `translateY(${startY}px) scale(${scale})`;
+      el.style.opacity = '0';
+      container.appendChild(el);
+
+      // animate it into the computed position
+      requestAnimationFrame(() => {
+        el.style.transform = `translateY(${y}px) scale(${scale})`;
+        el.style.opacity = '1';
+      });
+    } else {
+      // Reuse existing element: update text immediately and move it to correct position+scale
+      const left = el.querySelector('.left');
+      const cd = el.querySelector('.countdown');
+      const et = el.querySelector('.eta');
+
+      if (left) left.textContent = `${t.route} Line - ${t.dest}`;
+      if (cd) cd.textContent = countdownText;
+      if (et) et.textContent = etaText;
+
+      // ensure background color correct (in case route changed)
+      el.style.backgroundColor = routeColors[t.route] || '#1976d2';
+
+      // move + scale smoothly into the new position
+      // (we set transform immediately; CSS transition will animate)
+      el.style.transform = `translateY(${y}px) scale(${scale})`;
+      el.style.opacity = '1';
+    }
+
+    newCardElements.push(el);
+    // increment y by effective height (base spacing * scale) so stacking accounts for larger cards
+    y += cardHeight * scale;
+  });
+
+  // Any existing cards not present in the new trains list should slide up and be removed
+  Object.keys(existingById).forEach(oldId => {
+    if (!trains.find(t => t.id === oldId)) {
+      const removedEl = existingById[oldId];
+      // animate slide up + fade
+      removedEl.style.transform = `translateY(-120%) scale(1)`;
+      removedEl.style.opacity = '0';
+      setTimeout(() => {
+        if (removedEl.parentNode) removedEl.parentNode.removeChild(removedEl);
+      }, 1000);
+    }
+  });
+
+  // Replace the ordered array with the new ordered elements
+  cardElements = newCardElements;
 }
+
 
 /* Update countdown text + ETA and recompute scales & positions smoothly */
 /* IMPORTANT: this controls both visual size (scale) and vertical translation so transitions are smooth. */
