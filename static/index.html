@@ -8,7 +8,7 @@ body { margin:0; font-family: Arial,sans-serif; background:black; color:white; }
 header { background-color: #1976d2; color:white; text-align:center; padding:1rem; font-size:2rem; }
 .container { max-width:800px; margin:2rem auto; position:relative; height:400px; overflow:hidden; }
 .card { position:absolute; left:0; width:95%; display:flex; justify-content:space-between; align-items:center; padding:1rem; color:white; border-radius:12px; transition: transform 1s ease, opacity 1s ease; }
-.countdown { font-weight:bold; font-size:1.2rem; padding:0.3rem 0.6rem; border-radius:10px; min-width:60px; text-align:center; background:rgba(255,255,255,0.2); }
+.countdown { font-weight:bold; font-size:2rem; padding:0.3rem 0.6rem; border-radius:10px; min-width:60px; text-align:center; background:rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
@@ -56,7 +56,11 @@ function renderCards(){
     trains.forEach((t,i)=>{
         const card = document.createElement('div');
         card.className='card';
-        card.style.backgroundColor=routeColors[t.route]||'#1976d2';
+        if(t.route == "P") {
+			card.style.backgroundColor=routeColors['Purple']||'#1976d2';
+		} else {
+			card.style.backgroundColor=routeColors[t.route]||'#1976d2';
+		}
         card.style.transform=`translateY(${i*cardHeight}px)`;
         card.style.opacity='1';
         card.innerHTML=`<div>${t.route} Line - ${t.dest}</div><div class='countdown'></div>`;
@@ -98,7 +102,11 @@ function slideTrain(){
             trains.push(newTrain);
             const newCard = document.createElement('div');
             newCard.className = 'card';
-            newCard.style.backgroundColor=routeColors[newTrain.route]||'#1976d2';
+            if(newTrain.route == "P") {
+				newCard.style.backgroundColor=routeColors['Purple']||'#1976d2';
+			} else {
+				card.style.backgroundColor=routeColors[t.route]||'#1976d2';
+			}
             newCard.style.transform = `translateY(${cardElements.length*cardHeight + cardHeight}px)`;
             newCard.style.opacity = '1';
             newCard.innerHTML = `<div>${newTrain.route} Line - ${newTrain.dest}</div><div class='countdown'></div>`;
