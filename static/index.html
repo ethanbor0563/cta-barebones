@@ -8,8 +8,8 @@
 body { margin:0; font-family: Arial,sans-serif; background:black; color:white; }
 header { background-color: #1976d2; color:white; text-align:center; padding:1rem; font-size:6.5rem; }
 .container { max-width:1800px; margin:2rem auto; position:relative; height:900px; overflow:hidden; }
-.card { font-size:4rem; position:absolute; left:0; width:95%; display:flex; justify-content:space-between; align-items:center; padding:2rem; color:white; border-radius:36px; transition: transform 1s ease, opacity 1s ease; }
-.countdown { font-weight:bold; font-size:7rem; padding:0.3rem 0.3rem; border-radius:36px; min-width:60px; text-align:center; background:rgba(255,255,255,0.2); }
+.card { font-size:4rem; position:absolute; left:0; width:95%; display:flex; justify-content:space-between; align-items:center; padding:3rem; color:white; border-radius:36px; transition: transform 1s ease, opacity 1s ease; }
+.countdown { font-weight:bold; font-size:7rem; padding:0.3rem 0.1rem; border-radius:36px; min-width:60px; text-align:center; background:rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
@@ -19,7 +19,7 @@ header { background-color: #1976d2; color:white; text-align:center; padding:1rem
 const container = document.getElementById('train-list');
 let trains = [];
 let cardElements = [];
-const cardHeight = 150;
+const cardHeight = 120;
 const routeColors = {Red:'#d32f2f',Purple:'#6a1b9a',Blue:'#1976d2'};
 
 function formatHM(d){
@@ -78,7 +78,7 @@ function updateCountdowns(){
         let diff=Math.max(0,Math.floor((eta-now)/1000));
         const m=Math.floor(diff/60);
         const s=diff%60;
-        card.querySelector('.countdown').innerText=`${m}:${s.toString().padStart(2,'0')} ETA:${formatHM(eta)}`;
+        card.querySelector('.countdown').innerText=`${m}:${s.toString().padStart(2,'0')}  ETA ${formatHM(eta)}`;
     });
 }
 
