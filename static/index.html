@@ -36,11 +36,13 @@ function renderCards(){
     cardElements=[];
     trains.forEach((t,i)=>{
         const card = document.createElement('div');
-        card.className='card';
-        card.style.backgroundColor=routeColors[t.route]||'#1976d2';
-        card.style.transform=`translateY(${i*cardHeight}px)`;
-        card.style.opacity='1';
-        card.innerHTML=`<div>${t.route} Line - ${t.dest}</div><div class='countdown'></div>`;
+        card.className = 'card';
+        card.style.background = routeColor(t.route);
+        card.innerHTML = `
+            <div class="train-left">${t.route} to ${t.dest}</div>
+            <div class="train-countdown">in 0:00</div>
+            <div class="train-eta">${formatTime(t.eta)}</div>
+        `;
         container.appendChild(card);
         cardElements.push(card);
     });
